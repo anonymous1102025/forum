@@ -1,0 +1,5 @@
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: #F1F5F9; font-family: 'Inter', system-ui, sans-serif; }
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: #F1F5F9; }
+::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 99px; }

@@ -1,0 +1,10 @@
+[
+  {
+    "slug": "cambridge-forum",
+    "name": "Cambridge Forum",
+    "website": "https://cambridgeforum.com",
+    "ga4_property_id": "490276257",
+    "ga4_credentials_path": "keys/user_token.json",
+    "db_path": "data/cambridge-forum.db"
+  }
+]
