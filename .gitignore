@@ -9,7 +9,6 @@ dist/
 
 # Secrets & data (never commit these)
 backend/keys/
-backend/data/
 
 # Node
 frontend/node_modules/
