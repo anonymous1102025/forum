@@ -6,6 +6,7 @@ __pycache__/
 dist/
 .env
 
+
 # Secrets & data (never commit these)
 backend/keys/
 backend/data/
