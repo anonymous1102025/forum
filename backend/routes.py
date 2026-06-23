@@ -34,13 +34,14 @@ from datetime import date, timedelta
 from datetime import date as date_cls
 from typing import Any, Optional
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 import database as db
 import account_manager as acm
+from auth import require_auth
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_auth)])
 
 
 # ── Date utilities ─────────────────────────────────────────────────────────────

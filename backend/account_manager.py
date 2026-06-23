@@ -18,7 +18,12 @@ import re
 from pathlib import Path
 from typing import Any
 
-_ACCOUNTS_FILE = Path(__file__).parent / "accounts.json"
+from config import settings
+
+# Accounts file lives on the persistent disk (DATA_DIR) in production,
+# falls back to the backend directory in local dev.
+_DATA_DIR = Path(settings.data_dir)
+_ACCOUNTS_FILE = _DATA_DIR / "accounts.json"
 
 REQUIRED_FIELDS = {"slug", "name", "ga4_property_id", "ga4_credentials_path"}
 
@@ -102,3 +107,26 @@ def get_credentials(account: dict[str, Any]) -> dict[str, str]:
         "property_id":       account["ga4_property_id"],
         "credentials_path":  account["ga4_credentials_path"],
     }
+
+
+def bootstrap_from_env() -> None:
+    """If accounts.json doesn't exist yet and GA4 env vars are set, create the
+    first account automatically. Called once at startup on Render."""
+    if _ACCOUNTS_FILE.exists():
+        return
+    pid  = settings.ga4_property_id.strip()
+    name = settings.ga4_account_name.strip() or "Default"
+    cred = settings.ga4_credentials_path.strip()
+    if not pid or not cred:
+        return
+    _DATA_DIR.mkdir(parents=True, exist_ok=True)
+    slug = re.sub(r"[^a-z0-9]+", "", name.lower()) or "default"
+    account = {
+        "slug":                slug,
+        "name":                name,
+        "website":             "",
+        "ga4_property_id":     pid,
+        "ga4_credentials_path": cred,
+        "db_path":             str(_DATA_DIR / f"{slug}.db"),
+    }
+    _save([account])

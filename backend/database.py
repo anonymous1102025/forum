@@ -26,7 +26,8 @@ import sqlite3
 from contextlib import contextmanager
 from typing import Any, Generator
 
-_DEFAULT_DB = "data/analytics.db"
+from config import settings as _settings
+_DEFAULT_DB = f"{_settings.data_dir}/analytics.db"
 
 
 @contextmanager

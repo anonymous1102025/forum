@@ -9,6 +9,8 @@ import { format, addDays, subDays, addWeeks, subWeeks, addMonths, subMonths, sta
 import { fetchAnalytics, fetchRunLog, triggerFetch, fetchAccounts, setCurrentAccount } from './api'
 import type { AnalyticsResponse, Period } from './types'
 import type { AccountSummary } from './api'
+import { isLoggedIn, clearToken } from './auth'
+import LoginPage from './LoginPage'
 
 /* ─── Theme-aware color tokens (CSS custom properties) ───────────────────── */
 const C = {
@@ -544,6 +546,16 @@ function MarketingCalculator({ sessions, conversions, newUsers, autoLeads }: { s
    App
 ═══════════════════════════════════════════════════════════════════════════ */
 export default function App() {
+  const [loggedIn, setLoggedIn] = useState(isLoggedIn)
+
+  if (!loggedIn) {
+    return <LoginPage onLogin={() => setLoggedIn(true)} />
+  }
+
+  return <Dashboard />
+}
+
+function Dashboard() {
   const [isDark, setIsDark] = useState(() => {
     const saved = localStorage.getItem('theme')
     if (saved === 'light') { document.documentElement.className = 'light'; return false }
@@ -772,6 +784,12 @@ export default function App() {
               {/* Theme toggle */}
               <button onClick={toggleTheme} style={{ ...navBtn, border:`1px solid ${C.border}` }} title={isDark?'Switch to light mode':'Switch to dark mode'}>
                 {isDark ? <Sun size={13} /> : <Moon size={13} />}
+              </button>
+              {/* Sign out */}
+              <button onClick={() => { clearToken(); window.location.reload() }}
+                style={{ ...navBtn, border:`1px solid ${C.border}`, color:C.muted, fontSize:11 }}
+                title="Sign out">
+                Sign out
               </button>
               <button onClick={handleFetch} disabled={triggering}
                 style={{ display:'flex', alignItems:'center', gap:6, fontSize:11, fontWeight:600, fontFamily:FONT, padding:'7px 14px', borderRadius:8, border:`1px solid ${C.border}`, background:C.card, cursor:'pointer', color:C.muted }}>

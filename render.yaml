@@ -1,0 +1,49 @@
+services:
+  - type: web
+    name: forum-analytics-api
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    disk:
+      name: analytics-data
+      mountPath: /var/data
+      sizeGB: 1
+
+    envVars:
+      # Storage — points to the persistent disk mount
+      - key: DATA_DIR
+        value: /var/data
+
+      # GA4 service account key — upload via Render → Secret Files
+      # Mount path must match GA4_CREDENTIALS_PATH below
+      - key: GA4_CREDENTIALS_PATH
+        value: /etc/secrets/ga4-creds.json
+
+      # GA4 property — fill in your numeric property ID
+      - key: GA4_PROPERTY_ID
+        value: ""          # e.g. 123456789
+
+      - key: GA4_ACCOUNT_NAME
+        value: "Forum Analytics"
+
+      # Auth — CHANGE THESE before deploying
+      - key: AUTH_USER
+        value: admin
+      - key: AUTH_PASSWORD
+        generateValue: false   # set manually in Render dashboard
+        value: ""              # REQUIRED: set a strong password in dashboard
+      - key: JWT_SECRET
+        generateValue: true    # Render auto-generates a random value
+
+      # Scheduler
+      - key: FETCH_HOUR_UTC
+        value: "6"
+      - key: FETCH_ON_STARTUP
+        value: "true"
+
+      # CORS — add your Vercel URL here once deployed
+      # e.g.: https://forum-analytics.vercel.app
+      - key: CORS_ORIGINS
+        value: "https://your-app.vercel.app http://localhost:5173"

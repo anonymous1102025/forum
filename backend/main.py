@@ -23,9 +23,12 @@ from apscheduler.triggers.cron import CronTrigger
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from pathlib import Path
+
 from config import settings
 from database import init_db, get_conn, get_available_dates
 from routes import router
+import auth
 import account_manager as acm
 
 logging.basicConfig(
@@ -59,6 +62,12 @@ async def _daily_fetch_job() -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     log.info("Starting GA4 Analytics API …")
+
+    # Ensure data directory exists (important on first deploy with persistent disk)
+    Path(settings.data_dir).mkdir(parents=True, exist_ok=True)
+
+    # Auto-create accounts.json from env vars if it doesn't exist yet
+    acm.bootstrap_from_env()
 
     # Initialise DB schema for every registered account
     for acc_summary in acm.list_accounts():
@@ -121,6 +130,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(auth.router)
 app.include_router(router)
 
 
