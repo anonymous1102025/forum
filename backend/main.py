@@ -63,10 +63,10 @@ async def _daily_fetch_job() -> None:
 async def lifespan(app: FastAPI):
     log.info("Starting GA4 Analytics API …")
 
-    # Ensure data directory exists (important on first deploy with persistent disk)
+    # Ensure data directory exists for SQLite files
     Path(settings.data_dir).mkdir(parents=True, exist_ok=True)
 
-    # Auto-create accounts.json from env vars if it doesn't exist yet
+    # bootstrap_from_env only runs if accounts.json is missing (first-ever deploy)
     acm.bootstrap_from_env()
 
     # Initialise DB schema for every registered account

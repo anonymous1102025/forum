@@ -20,10 +20,9 @@ from typing import Any
 
 from config import settings
 
-# Accounts file lives on the persistent disk (DATA_DIR) in production,
-# falls back to the backend directory in local dev.
-_DATA_DIR = Path(settings.data_dir)
-_ACCOUNTS_FILE = _DATA_DIR / "accounts.json"
+# accounts.json lives next to this file (backend/accounts.json).
+# It is committed to git so Render always has it after deploy.
+_ACCOUNTS_FILE = Path(__file__).parent / "accounts.json"
 
 REQUIRED_FIELDS = {"slug", "name", "ga4_property_id", "ga4_credentials_path"}
 
@@ -103,15 +102,18 @@ def delete_account(slug: str) -> None:
 
 
 def get_credentials(account: dict[str, Any]) -> dict[str, str]:
+    # GA4_CREDENTIALS_PATH env var overrides the path stored in accounts.json.
+    # Set it on Render to point to the Secret File; leave empty for local dev.
+    creds_path = settings.ga4_credentials_path.strip() or account["ga4_credentials_path"]
     return {
-        "property_id":       account["ga4_property_id"],
-        "credentials_path":  account["ga4_credentials_path"],
+        "property_id":      account["ga4_property_id"],
+        "credentials_path": creds_path,
     }
 
 
 def bootstrap_from_env() -> None:
-    """If accounts.json doesn't exist yet and GA4 env vars are set, create the
-    first account automatically. Called once at startup on Render."""
+    """If accounts.json doesn't exist and GA4 env vars are set, create it.
+    Only runs on a fresh Render deploy before accounts.json is committed."""
     if _ACCOUNTS_FILE.exists():
         return
     pid  = settings.ga4_property_id.strip()
@@ -119,14 +121,13 @@ def bootstrap_from_env() -> None:
     cred = settings.ga4_credentials_path.strip()
     if not pid or not cred:
         return
-    _DATA_DIR.mkdir(parents=True, exist_ok=True)
-    slug = re.sub(r"[^a-z0-9]+", "", name.lower()) or "default"
+    slug = re.sub(r"[^a-z0-9-]+", "-", name.lower()).strip("-") or "default"
     account = {
-        "slug":                slug,
-        "name":                name,
-        "website":             "",
-        "ga4_property_id":     pid,
+        "slug":                 slug,
+        "name":                 name,
+        "website":              "",
+        "ga4_property_id":      pid,
         "ga4_credentials_path": cred,
-        "db_path":             str(_DATA_DIR / f"{slug}.db"),
+        "db_path":              f"data/{slug}.db",
     }
     _save([account])
