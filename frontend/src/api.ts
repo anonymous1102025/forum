@@ -1,4 +1,4 @@
-import type { AnalyticsResponse, Period } from './types'
+import type { AnalyticsResponse, Period, ConverterRow, JourneyEvent } from './types'
 import { getToken, clearToken } from './auth'
 
 const BASE = import.meta.env.VITE_API_URL || ''
@@ -74,4 +74,18 @@ export async function triggerBackfill(from: string, to: string): Promise<void> {
     { method: 'POST' },
   )
   if (!res.ok) throw new Error(await res.text())
+}
+
+export async function fetchConverters(start: string, end: string, limit = 50): Promise<ConverterRow[]> {
+  const res = await _fetch(`${BASE}/api/journeys/converters?start=${start}&end=${end}&limit=${limit}${accountParam()}`)
+  if (!res.ok) throw new Error(await res.text())
+  const data = await res.json()
+  return data.converters
+}
+
+export async function fetchUserJourney(userPseudoId: string, start: string, end: string): Promise<JourneyEvent[]> {
+  const res = await _fetch(`${BASE}/api/journeys/${encodeURIComponent(userPseudoId)}?start=${start}&end=${end}${accountParam()}`)
+  if (!res.ok) throw new Error(await res.text())
+  const data = await res.json()
+  return data.events
 }

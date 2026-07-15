@@ -244,6 +244,44 @@ CREATE TABLE IF NOT EXISTS lead_devices_daily (
     PRIMARY KEY (date, device_category, browser)
 );
 
+-- order_confirmation conversion summary per day
+CREATE TABLE IF NOT EXISTS orders_daily (
+    date   TEXT PRIMARY KEY,
+    orders INTEGER NOT NULL DEFAULT 0,
+    users  INTEGER NOT NULL DEFAULT 0
+);
+
+-- order_confirmation attribution: source / medium / campaign per day
+CREATE TABLE IF NOT EXISTS order_attribution_daily (
+    date     TEXT NOT NULL,
+    source   TEXT NOT NULL DEFAULT '',
+    medium   TEXT NOT NULL DEFAULT '',
+    campaign TEXT NOT NULL DEFAULT '',
+    orders   INTEGER NOT NULL DEFAULT 0,
+    users    INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (date, source, medium, campaign)
+);
+
+-- order_confirmation geography: city / country per day
+CREATE TABLE IF NOT EXISTS order_geo_daily (
+    date    TEXT NOT NULL,
+    city    TEXT NOT NULL DEFAULT '',
+    country TEXT NOT NULL DEFAULT '',
+    orders  INTEGER NOT NULL DEFAULT 0,
+    users   INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (date, city, country)
+);
+
+-- order_confirmation device / browser per day
+CREATE TABLE IF NOT EXISTS order_devices_daily (
+    date            TEXT NOT NULL,
+    device_category TEXT NOT NULL DEFAULT '',
+    browser         TEXT NOT NULL DEFAULT '',
+    orders          INTEGER NOT NULL DEFAULT 0,
+    users           INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (date, device_category, browser)
+);
+
 -- New vs returning visitor comparison per day
 CREATE TABLE IF NOT EXISTS new_vs_returning_daily (
     date              TEXT    NOT NULL,
@@ -295,6 +333,7 @@ def delete_date(conn: sqlite3.Connection, date: str) -> None:
         "new_vs_returning_daily",
         "revenue_daily",
         "leads_daily", "lead_attribution_daily", "lead_geo_daily", "lead_devices_daily",
+        "orders_daily", "order_attribution_daily", "order_geo_daily", "order_devices_daily",
     ]
     for t in tables:
         conn.execute(f"DELETE FROM {t} WHERE date = ?", (date,))

@@ -144,6 +144,33 @@ export interface LeadDeviceRow {
   users:            number
 }
 
+export interface OrderSummary {
+  orders: number
+  users:  number
+}
+
+export interface OrderAttributionRow {
+  source:   string
+  medium:   string
+  campaign: string
+  orders:   number
+  users:    number
+}
+
+export interface OrderGeoRow {
+  city:    string
+  country: string
+  orders:  number
+  users:   number
+}
+
+export interface OrderDeviceRow {
+  device_category: string
+  browser:          string
+  orders:           number
+  users:            number
+}
+
 export interface NewVsReturningRow {
   segment:           string
   sessions:          number
@@ -152,6 +179,35 @@ export interface NewVsReturningRow {
   bounce_rate:       number
   avg_duration_secs: number
   pages_per_session: number
+}
+
+export interface ConverterRow {
+  user_pseudo_id:     string
+  conversion_event:   string
+  converted_at:       string | null
+  conversion_page:    string | null
+  source:             string
+  medium:             string
+  campaign:           string
+  device_category:    string
+  country:            string
+  city:               string
+  first_seen_at:      string | null
+  sessions_in_window: number
+  hours_to_convert:   number | null
+}
+
+export interface JourneyEvent {
+  event_time:      string | null
+  event_name:      string
+  session_id:       number | null
+  page_location:    string | null
+  page_title:       string | null
+  source:           string | null
+  medium:           string | null
+  device_category:  string | null
+  city:             string | null
+  country:          string | null
 }
 
 export interface AnalyticsResponse {
@@ -179,4 +235,8 @@ export interface AnalyticsResponse {
   lead_attribution:  LeadAttributionRow[]
   lead_geo:          LeadGeoRow[]
   lead_devices:      LeadDeviceRow[]
+  orders:            OrderSummary
+  order_attribution: OrderAttributionRow[]
+  order_geo:         OrderGeoRow[]
+  order_devices:     OrderDeviceRow[]
 }

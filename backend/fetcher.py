@@ -28,6 +28,11 @@ def _now_utc() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def _as_orders(rows: list[dict]) -> list[dict]:
+    """fetch_lead_* rows use the key 'leads' — rename to 'orders' for the orders_* tables."""
+    return [{**{k: v for k, v in r.items() if k != "leads"}, "orders": r["leads"]} for r in rows]
+
+
 def fetch_date(date_str: str, account: dict | None = None) -> dict[str, Any]:
     """
     Full fetch + transform + store for a single date.
@@ -68,6 +73,10 @@ def fetch_date(date_str: str, account: dict | None = None) -> dict[str, Any]:
             lead_attribution  = ga4.fetch_lead_attribution(date_str, date_str)
             lead_geo          = ga4.fetch_lead_geo(date_str, date_str)
             lead_devices      = ga4.fetch_lead_devices(date_str, date_str)
+            order_summary     = ga4.fetch_lead_summary(date_str, date_str, event_name="order_confirmation")
+            order_attribution = ga4.fetch_lead_attribution(date_str, date_str, event_name="order_confirmation")
+            order_geo         = ga4.fetch_lead_geo(date_str, date_str, event_name="order_confirmation")
+            order_devices     = ga4.fetch_lead_devices(date_str, date_str, event_name="order_confirmation")
 
             print(f"[fetcher] Fetched — {len(pages)} pages, {len(events)} events, {len(countries)} countries")
 
@@ -138,6 +147,10 @@ def fetch_date(date_str: str, account: dict | None = None) -> dict[str, Any]:
             lead_attribution_rows  = _fix_date(lead_attribution)
             lead_geo_rows          = _fix_date(lead_geo)
             lead_device_rows       = _fix_date(lead_devices)
+            order_summary_rows     = _fix_date(_as_orders(order_summary))
+            order_attribution_rows = _fix_date(_as_orders(order_attribution))
+            order_geo_rows         = _fix_date(_as_orders(order_geo))
+            order_device_rows      = _fix_date(_as_orders(order_devices))
 
             # ── Write to DB ───────────────────────────────────────────────────
             with db.get_conn(db_path) as conn:
@@ -162,6 +175,10 @@ def fetch_date(date_str: str, account: dict | None = None) -> dict[str, Any]:
                 db.upsert_many(conn, "lead_attribution_daily", lead_attribution_rows)
                 db.upsert_many(conn, "lead_geo_daily", lead_geo_rows)
                 db.upsert_many(conn, "lead_devices_daily", lead_device_rows)
+                db.upsert_many(conn, "orders_daily", order_summary_rows)
+                db.upsert_many(conn, "order_attribution_daily", order_attribution_rows)
+                db.upsert_many(conn, "order_geo_daily", order_geo_rows)
+                db.upsert_many(conn, "order_devices_daily", order_device_rows)
 
             total_rows = (
                 1 + len(hourly_rows) + len(traffic_rows) +
@@ -170,7 +187,9 @@ def fetch_date(date_str: str, account: dict | None = None) -> dict[str, Any]:
                 len(browser_rows) + len(country_rows) + len(referrer_rows) +
                 len(search_term_rows) + len(new_vs_returning_rows) +
                 len(revenue_rows) + len(lead_summary_rows) +
-                len(lead_attribution_rows) + len(lead_geo_rows) + len(lead_device_rows)
+                len(lead_attribution_rows) + len(lead_geo_rows) + len(lead_device_rows) +
+                len(order_summary_rows) + len(order_attribution_rows) +
+                len(order_geo_rows) + len(order_device_rows)
             )
 
     except Exception as exc:

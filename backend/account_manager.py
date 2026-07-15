@@ -10,6 +10,10 @@ Each account entry:
     ga4_property_id       – GA4 property ID (numeric, e.g. "123456789")
     ga4_credentials_path  – Path to Google service account JSON key file
     db_path               – Path to the account's SQLite DB
+    bigquery_project      – (optional) GCP project the GA4 BigQuery Export
+                             writes to. Required for /api/journeys/*.
+                             Find it in GA4 Admin -> Product Links -> BigQuery Links.
+    bigquery_dataset       – (optional) defaults to analytics_<ga4_property_id>
 """
 from __future__ import annotations
 

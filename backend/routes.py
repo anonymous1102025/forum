@@ -10,6 +10,11 @@ GET /api/analytics?period=weekly&week_start=YYYY-MM-DD
 GET /api/analytics?period=monthly&month=YYYY-MM
 GET /api/analytics?period=custom&start=YYYY-MM-DD&end=YYYY-MM-DD
 
+User journey endpoints (live BigQuery, requires bigquery_project on the account)
+---------------------------------------------------------------------------------
+GET /api/journeys/converters?start=YYYY-MM-DD&end=YYYY-MM-DD
+GET /api/journeys/{user_pseudo_id}?start=YYYY-MM-DD&end=YYYY-MM-DD
+
 Utility endpoints
 -----------------
 GET  /api/dates/available
@@ -39,6 +44,7 @@ from pydantic import BaseModel
 
 import database as db
 import account_manager as acm
+import bigquery_client as bq
 from auth import require_auth
 
 router = APIRouter(dependencies=[Depends(require_auth)])
@@ -92,6 +98,18 @@ def _resolve_db(account: Optional[str]) -> str:
     if not acc:
         raise HTTPException(404, f"Account '{account}' not found")
     return acc["db_path"]
+
+
+def _resolve_account(account: Optional[str]) -> dict:
+    if not account:
+        accounts = acm.list_accounts()
+        if not accounts:
+            raise HTTPException(404, "No account configured")
+        return acm.get_account(accounts[0]["slug"])
+    acc = acm.get_account(account)
+    if not acc:
+        raise HTTPException(404, f"Account '{account}' not found")
+    return acc
 
 
 # ── DB read helpers ────────────────────────────────────────────────────────────
@@ -452,6 +470,63 @@ def _lead_devices_for_dates(conn, dates: list[str]) -> list[dict]:
     )
 
 
+def _orders_for_dates(conn, dates: list[str]) -> dict:
+    if not dates:
+        return {}
+    rows = db.query(
+        conn,
+        f"""SELECT SUM(orders) AS orders, SUM(users) AS users
+            FROM orders_daily WHERE date IN ({_ph(dates)})""",
+        tuple(dates),
+    )
+    return rows[0] if rows else {}
+
+
+def _order_attribution_for_dates(conn, dates: list[str]) -> list[dict]:
+    if not dates:
+        return []
+    return db.query(
+        conn,
+        f"""SELECT source, medium, campaign,
+                   SUM(orders) AS orders,
+                   SUM(users) AS users
+            FROM order_attribution_daily WHERE date IN ({_ph(dates)})
+            GROUP BY source, medium, campaign
+            ORDER BY orders DESC LIMIT 30""",
+        tuple(dates),
+    )
+
+
+def _order_geo_for_dates(conn, dates: list[str]) -> list[dict]:
+    if not dates:
+        return []
+    return db.query(
+        conn,
+        f"""SELECT city, country,
+                   SUM(orders) AS orders,
+                   SUM(users) AS users
+            FROM order_geo_daily WHERE date IN ({_ph(dates)})
+            GROUP BY city, country
+            ORDER BY orders DESC LIMIT 30""",
+        tuple(dates),
+    )
+
+
+def _order_devices_for_dates(conn, dates: list[str]) -> list[dict]:
+    if not dates:
+        return []
+    return db.query(
+        conn,
+        f"""SELECT device_category, browser,
+                   SUM(orders) AS orders,
+                   SUM(users) AS users
+            FROM order_devices_daily WHERE date IN ({_ph(dates)})
+            GROUP BY device_category, browser
+            ORDER BY orders DESC LIMIT 20""",
+        tuple(dates),
+    )
+
+
 def _new_vs_returning_for_dates(conn, dates: list[str]) -> list[dict]:
     if not dates:
         return []
@@ -541,6 +616,10 @@ def get_analytics(
         lead_attribution  = _lead_attribution_for_dates(conn, dates)
         lead_geo          = _lead_geo_for_dates(conn, dates)
         lead_devices      = _lead_devices_for_dates(conn, dates)
+        orders            = _orders_for_dates(conn, dates)
+        order_attribution = _order_attribution_for_dates(conn, dates)
+        order_geo         = _order_geo_for_dates(conn, dates)
+        order_devices     = _order_devices_for_dates(conn, dates)
 
         available       = set(db.get_available_dates(conn))
         dates_with_data = [d for d in dates if d in available]
@@ -570,7 +649,51 @@ def get_analytics(
         "lead_attribution":   lead_attribution,
         "lead_geo":           lead_geo,
         "lead_devices":       lead_devices,
+        "orders":             orders,
+        "order_attribution":  order_attribution,
+        "order_geo":          order_geo,
+        "order_devices":      order_devices,
     }
+
+
+# ── User journeys (live BigQuery, not SQLite-backed) ───────────────────────────
+#
+# Unlike everything above, these query the GA4 BigQuery Export directly and
+# on demand — see bigquery_client.py for why this data isn't pre-fetched into
+# SQLite like the rest of the app.
+
+@router.get("/api/journeys/converters")
+def get_converters(
+    start:   str            = Query(...),
+    end:     str            = Query(...),
+    account: Optional[str]  = Query(None),
+    limit:   int            = Query(50, ge=1, le=200),
+    events:  Optional[str]  = Query(None, description="Comma-separated conversion event names"),
+):
+    acc = _resolve_account(account)
+    event_names = tuple(e.strip() for e in events.split(",") if e.strip()) if events else bq.DEFAULT_CONVERSION_EVENTS
+    try:
+        return {"converters": bq.fetch_converters(acc, start, end, event_names=event_names, limit=limit)}
+    except bq.BigQueryNotConfigured as e:
+        raise HTTPException(400, str(e))
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@router.get("/api/journeys/{user_pseudo_id}")
+def get_user_journey(
+    user_pseudo_id: str,
+    start:   str           = Query(...),
+    end:     str           = Query(...),
+    account: Optional[str] = Query(None),
+):
+    acc = _resolve_account(account)
+    try:
+        return {"events": bq.fetch_user_journey(acc, user_pseudo_id, start, end)}
+    except bq.BigQueryNotConfigured as e:
+        raise HTTPException(400, str(e))
+    except ValueError as e:
+        raise HTTPException(400, str(e))
 
 
 # ── Available dates & fetch status ────────────────────────────────────────────

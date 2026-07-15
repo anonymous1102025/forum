@@ -6,8 +6,8 @@ import {
 } from 'recharts'
 import { ChevronLeft, ChevronRight, RefreshCw, AlertCircle, ExternalLink, Sun, Moon, TrendingDown, TrendingUp, Info } from 'lucide-react'
 import { format, addDays, subDays, addWeeks, subWeeks, addMonths, subMonths, startOfWeek, startOfMonth } from 'date-fns'
-import { fetchAnalytics, fetchRunLog, triggerFetch, fetchAccounts, setCurrentAccount } from './api'
-import type { AnalyticsResponse, Period } from './types'
+import { fetchAnalytics, fetchRunLog, triggerFetch, fetchAccounts, setCurrentAccount, fetchConverters, fetchUserJourney } from './api'
+import type { AnalyticsResponse, Period, ConverterRow, JourneyEvent } from './types'
 import type { AccountSummary } from './api'
 import { isLoggedIn, clearToken } from './auth'
 import LoginPage from './LoginPage'
@@ -355,6 +355,7 @@ const TABS = [
   { id:'timing',     label:'Timing'     },
   { id:'financial',  label:'Financial'  },
   { id:'insights',   label:'Insights'   },
+  { id:'journeys',   label:'Journeys'   },
 ] as const
 type TabId = typeof TABS[number]['id']
 
@@ -362,7 +363,8 @@ type TabId = typeof TABS[number]['id']
 const EMPTY_KPIS  = { sessions:0, users:0, new_users:0, returning_users:0, pageviews:0, pages_per_session:0, avg_session_duration_secs:0, bounce_rate:0, engagement_rate:0 }
 const EMPTY_REV   = { total_revenue:0, purchase_revenue:0, purchases:0, transactions:0, conversions:0 }
 const EMPTY_LEADS = { leads:0, users:0 }
-const EMPTY: AnalyticsResponse = { period:'daily', label:'', dates_in_range:[], dates_with_data:[], kpis:EMPTY_KPIS, time_series:[], traffic:[], pages:[], device:[], cities:[], utm:[], events:[], landing_pages:[], browsers:[], countries:[], referrers:[], search_terms:[], new_vs_returning:[], revenue:EMPTY_REV, revenue_series:[], leads:EMPTY_LEADS, lead_attribution:[], lead_geo:[], lead_devices:[] }
+const EMPTY_ORDERS = { orders:0, users:0 }
+const EMPTY: AnalyticsResponse = { period:'daily', label:'', dates_in_range:[], dates_with_data:[], kpis:EMPTY_KPIS, time_series:[], traffic:[], pages:[], device:[], cities:[], utm:[], events:[], landing_pages:[], browsers:[], countries:[], referrers:[], search_terms:[], new_vs_returning:[], revenue:EMPTY_REV, revenue_series:[], leads:EMPTY_LEADS, lead_attribution:[], lead_geo:[], lead_devices:[], orders:EMPTY_ORDERS, order_attribution:[], order_geo:[], order_devices:[] }
 
 /* ═══════════════════════════════════════════════════════════════════════════
    MARKETING CALCULATOR (self-contained, multi-platform)
@@ -543,6 +545,167 @@ function MarketingCalculator({ sessions, conversions, newUsers, autoLeads }: { s
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
+   USER JOURNEYS (live BigQuery — not part of the daily SQLite rollup)
+═══════════════════════════════════════════════════════════════════════════ */
+function JourneysPanel() {
+  const today = format(subDays(new Date(),1),'yyyy-MM-dd')
+  const [start, setStart] = useState(format(subDays(new Date(),30),'yyyy-MM-dd'))
+  const [end, setEnd]     = useState(today)
+  const [converters, setConverters] = useState<ConverterRow[]>([])
+  const [loading, setLoading]       = useState(false)
+  const [error, setError]           = useState<string|null>(null)
+  const [loaded, setLoaded]         = useState(false)
+  const [selected, setSelected]     = useState<ConverterRow|null>(null)
+  const [journey, setJourney]       = useState<JourneyEvent[]>([])
+  const [journeyLoading, setJourneyLoading] = useState(false)
+  const [journeyError, setJourneyError]     = useState<string|null>(null)
+
+  const load = async () => {
+    setLoading(true); setError(null); setSelected(null)
+    try {
+      const rows = await fetchConverters(start, end, 50)
+      setConverters(rows)
+      setLoaded(true)
+    } catch (e: any) {
+      setError(e.message || 'Failed to load converters')
+      setLoaded(true)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const openJourney = async (c: ConverterRow) => {
+    setSelected(c); setJourney([]); setJourneyError(null); setJourneyLoading(true)
+    try {
+      setJourney(await fetchUserJourney(c.user_pseudo_id, start, end))
+    } catch (e: any) {
+      setJourneyError(e.message || 'Failed to load journey')
+    } finally {
+      setJourneyLoading(false)
+    }
+  }
+
+  const inp: React.CSSProperties = { padding:'8px 10px', borderRadius:8, border:`1px solid ${C.border}`, background:C.inputBg, color:C.text, fontSize:12, fontFamily:MONO, outline:'none' }
+
+  return (
+    <div className="fade-up">
+      <Card style={{ marginBottom:14 }}>
+        <SH label="Individual journeys" title="Converting Users" sub="Live query against the GA4 BigQuery Export — not part of the daily rollup, so this can take a few seconds"/>
+        <div style={{ display:'flex', alignItems:'flex-end', gap:10, flexWrap:'wrap' }}>
+          <div>
+            <div style={{ fontSize:10, color:C.muted, fontWeight:600, marginBottom:6, textTransform:'uppercase', letterSpacing:'0.08em' }}>From</div>
+            <input type="date" style={inp} value={start} max={end} onChange={e=>setStart(e.target.value)}/>
+          </div>
+          <div>
+            <div style={{ fontSize:10, color:C.muted, fontWeight:600, marginBottom:6, textTransform:'uppercase', letterSpacing:'0.08em' }}>To</div>
+            <input type="date" style={inp} value={end} min={start} max={today} onChange={e=>setEnd(e.target.value)}/>
+          </div>
+          <button onClick={load} disabled={loading}
+            style={{ padding:'9px 18px', borderRadius:8, border:'none', background:loading?'#4f46e580':'linear-gradient(135deg, #6366f1, #8b5cf6)', color:'#fff', fontSize:12, fontWeight:600, cursor:loading?'not-allowed':'pointer', fontFamily:FONT }}>
+            {loading ? 'Loading…' : 'Load converters'}
+          </button>
+          {loaded && !loading && !error && <span style={{ fontSize:11, color:C.faint, fontFamily:MONO }}>{converters.length} converters found</span>}
+        </div>
+
+        {error && (
+          <div style={{ marginTop:16, background:`${C.rose}10`, border:`1px solid ${C.rose}30`, borderRadius:10, padding:'14px 16px' }}>
+            <div style={{ fontWeight:600, color:C.rose, fontSize:12, marginBottom:4 }}>Couldn't load converters</div>
+            <div style={{ fontSize:11, color:C.muted, fontFamily:MONO, lineHeight:1.6 }}>{error}</div>
+          </div>
+        )}
+      </Card>
+
+      {!loading && loaded && !error && (
+        <div style={{ display:'grid', gridTemplateColumns: selected ? '1fr 380px' : '1fr', gap:14 }}>
+          <Card>
+            {converters.length === 0 ? (
+              <div style={{ color:C.faint, fontSize:12 }}>No conversions found in this range.</div>
+            ) : (
+              <div style={{ overflowX:'auto' }}>
+                <table style={{ width:'100%', borderCollapse:'collapse', fontSize:11 }}>
+                  <thead>
+                    <tr style={{ borderBottom:`1px solid ${C.border}` }}>
+                      {['User','Converted','Event','Source / Medium','Device','Location','Time to convert'].map((h,i)=>(
+                        <th key={h} style={{ padding:'8px 10px', textAlign:i>=6?'right':'left', fontFamily:MONO, fontSize:9, fontWeight:600, color:C.faint, textTransform:'uppercase', letterSpacing:'0.06em' }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {converters.map(c=>(
+                      <tr key={c.user_pseudo_id+c.converted_at} onClick={()=>openJourney(c)}
+                        style={{ borderBottom:`1px solid ${C.borderSubtle}`, cursor:'pointer', background:selected?.user_pseudo_id===c.user_pseudo_id?C.cardHov:'transparent' }}>
+                        <td style={{ padding:'9px 10px', fontFamily:MONO, color:C.muted }}>{c.user_pseudo_id.slice(0,10)}…</td>
+                        <td style={{ padding:'9px 10px', fontFamily:MONO, color:C.text }}>{c.converted_at ? format(new Date(c.converted_at),'d MMM HH:mm') : '—'}</td>
+                        <td style={{ padding:'9px 10px' }}>
+                          <span style={{ fontSize:9, fontWeight:700, padding:'2px 7px', borderRadius:4, background:`${C.emerald}20`, color:C.emerald }}>{c.conversion_event}</span>
+                        </td>
+                        <td style={{ padding:'9px 10px', color:C.muted }}>{c.source} / {c.medium}</td>
+                        <td style={{ padding:'9px 10px', color:C.muted }}>{c.device_category}</td>
+                        <td style={{ padding:'9px 10px', color:C.muted }}>{[c.city,c.country].filter(Boolean).join(', ')||'—'}</td>
+                        <td style={{ padding:'9px 10px', textAlign:'right', fontFamily:MONO, fontWeight:600, color:C.text }}>
+                          {c.hours_to_convert!=null ? (c.hours_to_convert<1?'<1h':`${c.hours_to_convert}h`) : '—'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </Card>
+
+          {selected && (
+            <Card>
+              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:14 }}>
+                <SH label="Event timeline" title="User Journey" sub={selected.user_pseudo_id.slice(0,16)+'…'}/>
+                <button onClick={()=>setSelected(null)} style={{ background:'transparent', border:'none', color:C.faint, cursor:'pointer', fontSize:16, lineHeight:1 }}>×</button>
+              </div>
+              {journeyLoading ? [1,2,3,4,5].map(i=><div key={i} style={{ marginBottom:10 }}><Skel h={30}/></div>) : journeyError ? (
+                <div style={{ color:C.rose, fontSize:11, fontFamily:MONO }}>{journeyError}</div>
+              ) : journey.length === 0 ? (
+                <div style={{ color:C.faint, fontSize:12 }}>No events found for this user in range.</div>
+              ) : (
+                <div style={{ maxHeight:520, overflowY:'auto' }}>
+                  {journey.map((e,i)=>{
+                    const prevSession = i>0 ? journey[i-1].session_id : null
+                    const newSession = e.session_id !== prevSession
+                    const isConversion = e.event_name==='generate_lead' || e.event_name==='order_confirmation'
+                    return (
+                      <div key={i}>
+                        {newSession && i>0 && <div style={{ borderTop:`1px dashed ${C.border}`, margin:'10px 0' }}/>}
+                        <div style={{ display:'flex', gap:10, padding:'6px 0' }}>
+                          <div style={{ width:6, height:6, borderRadius:'50%', background: isConversion?C.emerald:C.faint, marginTop:5, flexShrink:0 }}/>
+                          <div style={{ flex:1, minWidth:0 }}>
+                            <div style={{ display:'flex', justifyContent:'space-between', gap:8 }}>
+                              <span style={{ fontSize:11, fontWeight:600, color:isConversion?C.emerald:C.text, fontFamily:MONO }}>{e.event_name}</span>
+                              <span style={{ fontSize:9, color:C.faint, fontFamily:MONO, whiteSpace:'nowrap' }}>{e.event_time ? format(new Date(e.event_time),'HH:mm:ss') : ''}</span>
+                            </div>
+                            {(e.page_title || e.page_location) && (
+                              <div style={{ fontSize:10, color:C.muted, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{e.page_title || e.page_location}</div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </Card>
+          )}
+        </div>
+      )}
+
+      {!loaded && !loading && !error && (
+        <Card>
+          <div style={{ padding:'20px 0', textAlign:'center', color:C.faint, fontSize:12 }}>
+            Pick a date range and load converters to see individual journeys.
+          </div>
+        </Card>
+      )}
+    </div>
+  )
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
    App
 ═══════════════════════════════════════════════════════════════════════════ */
 export default function App() {
@@ -595,7 +758,7 @@ function Dashboard() {
     if (period === 'custom') { const {start,end} = decodeCustom(param); if (!start||!end) return }
     setLoading(true); setError(null)
     fetchAnalytics(period as Period, param)
-      .then(d => setData({ ...EMPTY, ...d, revenue: d.revenue ?? EMPTY_REV, revenue_series: d.revenue_series ?? [], leads: d.leads ?? EMPTY_LEADS, lead_attribution: d.lead_attribution ?? [], lead_geo: d.lead_geo ?? [], lead_devices: d.lead_devices ?? [] }))
+      .then(d => setData({ ...EMPTY, ...d, revenue: d.revenue ?? EMPTY_REV, revenue_series: d.revenue_series ?? [], leads: d.leads ?? EMPTY_LEADS, lead_attribution: d.lead_attribution ?? [], lead_geo: d.lead_geo ?? [], lead_devices: d.lead_devices ?? [], orders: d.orders ?? EMPTY_ORDERS, order_attribution: d.order_attribution ?? [], order_geo: d.order_geo ?? [], order_devices: d.order_devices ?? [] }))
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false))
   }, [period, param, curAcct, accounts.length])
@@ -616,7 +779,7 @@ function Dashboard() {
 
   const { kpis, time_series, traffic, pages, device, cities, utm, events,
     landing_pages, browsers, countries, referrers, revenue, revenue_series,
-    leads, lead_attribution, lead_geo } = data
+    leads, lead_attribution, lead_geo, orders, order_attribution } = data
   const noData    = !loading && !error && data.dates_with_data?.length === 0
   const acctName  = accounts.find(a => a.slug === curAcct)?.name ?? 'Analytics'
   const acctUrl   = accounts.find(a => a.slug === curAcct)?.website ?? ''
@@ -1296,6 +1459,52 @@ function Dashboard() {
               </div>
             )}
 
+            {/* order_confirmation conversion KPIs */}
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:14, marginBottom:14 }}>
+              <KpiCard label="Orders (order_confirmation)" value={orders?.orders??0} color={C.emerald} loading={loading}
+                sub={`${fN(orders?.users??0)} unique users`}
+                insight={(orders?.orders??0)>0?'Tracked as a GA4 conversion event':'No order_confirmation events found yet'} />
+              <KpiCard label="Order Conversion Rate" value={kpis.sessions>0&&(orders?.orders??0)>0?(orders?.orders??0)/kpis.sessions*100:0} fmt={fP} color={C.sky} loading={loading}
+                sub={`${fN(orders?.orders??0)} orders / ${fN(kpis.sessions)} sessions`}
+                insight={(orders?.orders??0)>0?'% of sessions that confirmed an order':'Enable order_confirmation tracking'} />
+              <KpiCard label="Orders per User" value={(orders?.users??0)>0?(orders?.orders??0)/(orders?.users??1):0} fmt={v=>v.toFixed(2)} color={C.violet} loading={loading}
+                sub="Average orders per converting user"
+                insight={(orders?.orders??0)>0?'Most users confirm 1 order':'—'} />
+            </div>
+
+            {/* Order attribution */}
+            {!loading && (orders?.orders??0) > 0 && (
+              <Card style={{ marginBottom:14 }}>
+                <SH label="Where orders come from" title="Order Attribution" sub="Source · Medium · Campaign for order_confirmation events"/>
+                {!order_attribution || order_attribution.length===0 ? (
+                  <div style={{ color:C.faint, fontSize:12 }}>No attribution data for orders in this period</div>
+                ) : (
+                  <div style={{ overflowX:'auto' }}>
+                    <table style={{ width:'100%', borderCollapse:'collapse', fontSize:11 }}>
+                      <thead>
+                        <tr style={{ borderBottom:`1px solid ${C.border}` }}>
+                          {['Source','Medium','Campaign','Orders','Users'].map((h,i)=>(
+                            <th key={h} style={{ padding:'7px 8px', textAlign:i>=3?'right':'left', fontFamily:MONO, fontSize:9, fontWeight:600, color:C.faint, textTransform:'uppercase', letterSpacing:'0.06em' }}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {order_attribution.slice(0,12).map((r,i)=>(
+                          <tr key={`${r.source}-${r.medium}-${r.campaign}-${i}`} style={{ borderBottom:`1px solid ${C.borderSubtle}` }}>
+                            <td style={{ padding:'8px', fontWeight:i===0?600:400, color:i===0?C.text:C.muted, fontFamily:MONO }}>{r.source}</td>
+                            <td style={{ padding:'8px', color:C.muted, fontFamily:MONO }}>{r.medium}</td>
+                            <td style={{ padding:'8px', color:C.muted, maxWidth:120, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{r.campaign}</td>
+                            <td style={{ padding:'8px', textAlign:'right', fontFamily:MONO, fontWeight:700, color:C.emerald }}>{fN(r.orders)}</td>
+                            <td style={{ padding:'8px', textAlign:'right', fontFamily:MONO, color:C.muted }}>{fN(r.users)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </Card>
+            )}
+
             {/* Revenue chart + conversion events */}
             <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14, marginBottom:14 }}>
 
@@ -1695,6 +1904,11 @@ function Dashboard() {
             </div>
           </div>
         )}
+
+        {/* ═════════════════════════════════════════════════════════════════
+            JOURNEYS
+        ═════════════════════════════════════════════════════════════════ */}
+        {tab === 'journeys' && <JourneysPanel/>}
       </div>
     </div>
   )
